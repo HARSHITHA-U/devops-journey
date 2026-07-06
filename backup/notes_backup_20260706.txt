@@ -1,0 +1,1 @@
+Today I learned pwd, ls, cd, mkdir, touch, cat, nano, rm, clear
