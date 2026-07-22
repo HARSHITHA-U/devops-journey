@@ -13,7 +13,7 @@ Each stage in this repo was built, broken, debugged, and pushed as a real commit
    Dockerfile → Docker image (myapp:latest)
           │
           ▼
- ┌────────────────────────────────────────┐
+ ┌────────────────────────────────────────--┐
  │         Kubernetes (local cluster)       │
  │                                          │
  │   Deployment (myapp-deployment)          │
@@ -24,7 +24,7 @@ Each stage in this repo was built, broken, debugged, and pushed as a real commit
  │                                          │
  │   Service (myapp-service, LoadBalancer)  │
  │     → stable entrypoint → localhost:8080 │
- └────────────────────────────────────────┘
+ └────────────────────────────────────────--┘
           │
           ▼
    GitHub Actions CI
