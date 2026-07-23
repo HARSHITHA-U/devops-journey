@@ -24,3 +24,8 @@ spec:
                 configMapKeyRef:
                   name: myapp-config
                   key: APP_MESSAGE
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: myapp-secret
+                  key: API_KEY 

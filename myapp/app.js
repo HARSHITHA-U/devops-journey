@@ -1,9 +1,10 @@
 const http = require('http');
 const message = process.env.APP_MESSAGE || 'Default message - no config found';
+const apiKey = process.env.API_KEY || 'no-key-found';
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' })
-  res.end(message + '\n');
+  res.end(message + ' | API_KEY loaded: ' + (apiKey !== 'no-key-found') + '\n');
 });
 
 server.listen(8000, () => {
