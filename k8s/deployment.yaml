@@ -14,8 +14,7 @@ spec:
     spec:
       containers:
         - name: myapp
-          image: myapp:latest
-          imagePullPolicy: Never
+          image: 020529562765.dkr.ecr.us-east-1.amazonaws.com/devops-journey-myapp:latest
           ports:
             - containerPort: 8000
           env:
