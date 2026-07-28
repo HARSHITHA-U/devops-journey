@@ -1,0 +1,13 @@
+replicaCount: 3
+
+image:
+  repository: myapp
+  tag: latest
+  pullPolicy: Never
+
+appMessage: "Hello from Helm - default values"
+
+service:
+  port: 8080
+  targetPort: 8000
+  type: LoadBalancer
