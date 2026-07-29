@@ -1,0 +1,6 @@
+image:
+  repository: 020529562765.dkr.ecr.us-east-1.amazonaws.com/devops-journey-myapp
+  tag: latest
+  pullPolicy: Always
+
+appMessage: "Hello from Helm - deployed on AWS EKS"
