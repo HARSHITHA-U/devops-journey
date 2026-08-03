@@ -27,3 +27,24 @@ jobs:
           docker build -t myapp ./myapp
           docker tag myapp:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/devops-journey-myapp:latest
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/devops-journey-myapp:latest	
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region us-east-1 --name devops-journey-cluster
+
+      - name: Ensure Secret exists
+        run: |
+          kubectl create secret generic myapp-secret --from-literal=API_KEY=demo-key-12345 --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Install Helm
+
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install myapp-aws ./helm/myapp \
+            -f ./helm/myapp/values-aws.yaml \
+            --set image.repository=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/devops-journey-myapp \
+            --set image.tag=latest
+
