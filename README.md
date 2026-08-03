@@ -5,7 +5,7 @@ A hands-on, incremental build-up of core DevOps skills — containerization, orc
 Each stage in this repo was built, broken, debugged, and pushed as a real commit — the history reflects actual problem-solving (YAML indentation errors, GitHub token scopes, IAM permissions, DNS misconfiguration, cross-cluster Secrets), not a single copy-paste dump.
 
 ## Architecture
-
+```
 Local Node.js app (myapp/app.js)
           │
           ▼
@@ -40,7 +40,7 @@ Local Node.js app (myapp/app.js)
  (A local variant of the same Helm chart, myapp-local,
   runs identically against Docker Desktop's Kubernetes,
   using values.yaml defaults instead of values-aws.yaml.)
-
+```
 ## What's implemented so far
 
 **Containerization**
