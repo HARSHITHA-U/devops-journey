@@ -21,7 +21,7 @@ jobs:
       - name: Log in to ECR
         run: |
           aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
-
+     
       - name: Build and push image
         run: |
           docker build -t myapp ./myapp
@@ -34,9 +34,6 @@ jobs:
       - name: Ensure Secret exists
         run: |
           kubectl create secret generic myapp-secret --from-literal=API_KEY=demo-key-12345 --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Install Helm
-
 
       - name: Install Helm
         uses: azure/setup-helm@v4
