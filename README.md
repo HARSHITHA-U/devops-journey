@@ -1,50 +1,45 @@
 # DevOps Journey
 
-A hands-on, incremental build-up of core DevOps skills — containerization, orchestration, infrastructure as code, and templated deployments — using one real application as the through-line rather than disconnected tutorials.
+A hands-on, incremental build-up of core DevOps skills — containerization, orchestration, infrastructure as code, templated deployments, and automated CI/CD — using one real application as the through-line rather than disconnected tutorials.
 
 Each stage in this repo was built, broken, debugged, and pushed as a real commit — the history reflects actual problem-solving (YAML indentation errors, GitHub token scopes, IAM permissions, DNS misconfiguration, cross-cluster Secrets), not a single copy-paste dump.
 
 ## Architecture
 
-```
- Local Node.js app (myapp/app.js)
+Local Node.js app (myapp/app.js)
           │
           ▼
    Dockerfile → Docker image
           │
-          ├────────────────────────────┐
-          ▼                            ▼
-  Local Kubernetes                 Pushed to AWS ECR
-  (Docker Desktop)                        │
-          │                              ▼
-          │                     Terraform provisions:
-          │                     ┌──────────────────────────┐
-          │                     │  VPC (reused, existing)  │
-          │                     │  EKS cluster (control    │
-          │                     │    plane, managed by AWS)│
-          │                     │  Node Group (2 EC2       │
-          │                     │    worker nodes, 2 AZs)  │
-          │                     │  IAM roles for cluster   │
-          │                     │    + nodes               │
-          │                     └──────────────────────────┘
-          │                              │
-          ▼                              ▼
-   ┌─────────────────────────────────────────────┐
-   │        Helm chart (helm/myapp)              │
-   │   templates/deployment.yaml, service.yaml   │
-   │   values.yaml (defaults) + values-aws.yaml  │
-   │   (environment-specific overrides)          │
-   └─────────────────────────────────────────────┘
-          │                              │
-          ▼                              ▼
-  Deployment → 3 Pods            Deployment → 3 Pods
-  Service (LoadBalancer)         Service (real AWS ELB)
-  → localhost:8080               → public *.elb.amazonaws.com
+          ▼
+  git push to main
+          │
+          ▼
+ ┌───────────────────────────────────────────────┐
+ │           GitHub Actions (CI/CD)              │
+ │                                               │
+ │  1. Checkout code                             │
+ │  2. Configure AWS credentials (GitHub Secrets)│
+ │  3. Build image, push to ECR                  │
+ │  4. Update kubeconfig for EKS                 │
+ │  5. Ensure Kubernetes Secret exists           │
+ │  6. helm upgrade --install → deploy to EKS    │
+ └───────────────────────────────────────────────┘
+          │
+          ▼
+ ┌──────────────────────────────────────────────┐
+ │   AWS (provisioned via Terraform)            │
+ │   VPC (reused) → EKS cluster → Node Group    │
+ │   (2 EC2 workers, 2 AZs) → ECR repository    │
+ └──────────────────────────────────────────────┘
+          │
+          ▼
+  Helm release (myapp-aws) → 3 Pods → real AWS
+  Load Balancer → public *.elb.amazonaws.com
 
-   GitHub Actions CI
-     → checks out code, builds Docker image
-       on every push to main
-```
+ (A local variant of the same Helm chart, myapp-local,
+  runs identically against Docker Desktop's Kubernetes,
+  using values.yaml defaults instead of values-aws.yaml.)
 
 ## What's implemented so far
 
@@ -75,6 +70,11 @@ Each stage in this repo was built, broken, debugged, and pushed as a real commit
 - Converted the Kubernetes manifests into a templated Helm chart (`helm/myapp`)
 - One chart, two environments: `values.yaml` (local defaults) and `values-aws.yaml` (AWS-specific overrides — ECR image, updated message) — no duplicated YAML between environments
 - Deployed as a Helm release locally (`myapp-local`), verified against the same behavior as the manual `kubectl apply` version
+
+**CI/CD (GitHub Actions)**
+- A `git push` to `main` fully automates: build the Docker image → push to ECR → connect to the EKS cluster → ensure the Kubernetes Secret exists → `helm upgrade --install` to deploy
+- AWS credentials supplied to the pipeline via GitHub Secrets, never committed
+- Verified end-to-end: a real push produced a real, running deployment on EKS with no manual `kubectl`/`helm` commands run by hand
 
 **Bash scripting**
 - A small automation script for timestamped file backups
@@ -164,6 +164,8 @@ kubectl get services   # grab the LoadBalancer's public DNS name
 kubectl delete service myapp-service
 cd ../terraform
 terraform destroy
+
+**Or automatically:** once the infrastructure exists (`terraform apply`), any `git push` to `main` triggers the full pipeline — build, push to ECR, and deploy to EKS — with no manual steps.
 ```
 
 ## Notes from building this
@@ -178,6 +180,8 @@ terraform destroy
 - Kubernetes Secrets created via `kubectl create secret` (rather than from a file) don't carry over between clusters — they must be recreated on each new cluster.
 - Helm refuses to manage resources it didn't originally create — pre-existing `kubectl apply`-created resources need to be deleted before a matching Helm release can be installed.
 - `terraform destroy` can fail if an ECR repository still holds an image (`force_delete = true` resolves this) or if a Kubernetes-created Load Balancer is deleted after — not before — the underlying VPC/subnets.
+- Pipeline step ordering matters: a step that deploys an app must come *after* any step that creates resources the app depends on (e.g., a Kubernetes Secret) — an early version of this pipeline deployed before creating the Secret, reproducing the same `CreateContainerConfigError` seen earlier in manual testing.
+- AWS credentials for GitHub Actions are stored as GitHub Secrets, mirroring the same "keep sensitive values out of committed files" principle as Kubernetes Secrets.
 
 ## Roadmap
 
@@ -185,5 +189,5 @@ terraform destroy
 - [x] Helm chart to manage this as a reusable, versioned deployment
 - [x] Terraform (IaC) to provision real cloud infrastructure on AWS
 - [x] Deploy this stack to a real AWS Kubernetes cluster (EKS)
-- [ ] Extend CI into full CD — automatic build, push to ECR, and deploy to EKS on push
+- [x] Extend CI into full CD — automatic build, push to ECR, and deploy to EKS on push
 - [ ] Monitoring with Prometheus + Grafana
