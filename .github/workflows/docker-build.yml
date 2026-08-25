@@ -28,6 +28,18 @@ jobs:
           docker tag myapp:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/devops-journey-myapp:latest
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/devops-journey-myapp:latest	
 
+      - name: Install Trivy
+        run: |
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Scan image for vulnerabilities
+        run: trivy image --severity HIGH,CRITICAL --exit-code 1 ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/devops-journey-myapp:latest
+
+
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --region us-east-1 --name devops-journey-cluster
 
