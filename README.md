@@ -1,6 +1,6 @@
 # DevOps Journey
 
-A hands-on, incremental build-up of core DevOps skills — containerization, orchestration, infrastructure as code, templated deployments, and automated CI/CD — using one real application as the through-line rather than disconnected tutorials.
+A hands-on, incremental build-up of core DevOps skills — containerization, orchestration, infrastructure as code, templated deployments, automated CI/CD, GitOps, observability, and security hardening — using one real application as the through-line rather than disconnected tutorials.
 
 Each stage in this repo was built, broken, debugged, and pushed as a real commit — the history reflects actual problem-solving (YAML indentation errors, GitHub token scopes, IAM permissions, DNS misconfiguration, cross-cluster Secrets), not a single copy-paste dump.
 
@@ -40,6 +40,31 @@ Local Node.js app (myapp/app.js)
  (A local variant of the same Helm chart, myapp-local,
   runs identically against Docker Desktop's Kubernetes,
   using values.yaml defaults instead of values-aws.yaml.)
+          │
+          ▼
+ ┌──────────────────────────────────────────────┐
+ │              ArgoCD (GitOps)                 │
+ │  Watches helm/myapp in Git, continuously     │
+ │  syncs cluster state to match it (pull-based,│
+ │  not pushed by CI). selfHeal reverts any     │
+ │  manual/out-of-band cluster changes.         │
+ └──────────────────────────────────────────────┘
+          │
+          ▼
+  Deployment → 3 Pods → real AWS Load Balancer
+          │
+          ▼
+ ┌──────────────────────────────────────────────┐
+ │       Prometheus + Grafana (Monitoring)      │
+ │ App exposes /metrics (custom counter +       │
+ │ default Node.js stats). Prometheus discovers │
+ │ pods via annotations and scrapes on an       │
+ │ interval. Grafana queries Prometheus and     │
+ │   renders live dashboards.                   │
+ └──────────────────────────────────────────────┘
+
+
+
 ```
 ## What's implemented so far
 
@@ -75,6 +100,22 @@ Local Node.js app (myapp/app.js)
 - A `git push` to `main` fully automates: build the Docker image → push to ECR → connect to the EKS cluster → ensure the Kubernetes Secret exists → `helm upgrade --install` to deploy
 - AWS credentials supplied to the pipeline via GitHub Secrets, never committed
 - Verified end-to-end: a real push produced a real, running deployment on EKS with no manual `kubectl`/`helm` commands run by hand
+
+**Monitoring (Prometheus + Grafana)**
+- App instrumented with `prom-client`, exposing a `/metrics` endpoint (custom request counter + default Node.js runtime metrics)
+- Prometheus auto-discovers pods via `prometheus.io/scrape` annotations on the Pod template, not the Service
+- Grafana connects to Prometheus as a data source and renders live dashboards, verified against real generated traffic
+
+**GitOps (ArgoCD)**
+- ArgoCD installed in-cluster, configured via an `Application` manifest pointing at `helm/myapp` in this repo
+- Deployment is pull-based: ArgoCD polls Git and applies changes itself — no external system holds credentials capable of modifying the cluster
+- `selfHeal` enabled and verified: a manual, out-of-band `kubectl scale` change was automatically detected and reverted back to match Git within one sync cycle
+
+**Security hardening**
+- Replaced broad `AdministratorAccess` with a custom least-privilege IAM policy, scoped to only the actions this project's Terraform actually performs (EC2, EKS, ECR, and specific IAM role-management actions)
+- Verified by actually removing `AdministratorAccess` and testing real operations — found and fixed two real permission gaps this way, including recovering from a genuine self-lockout via the AWS root user
+- Image scanning via Trivy added to the CI/CD pipeline, gating on HIGH/CRITICAL vulnerabilities before deployment
+- A `NetworkPolicy` restricts inbound traffic to the app's pods to only the required port, independent of and complementary to the AWS Security Group layer
 
 **Bash scripting**
 - A small automation script for timestamped file backups
@@ -182,6 +223,10 @@ terraform destroy
 - `terraform destroy` can fail if an ECR repository still holds an image (`force_delete = true` resolves this) or if a Kubernetes-created Load Balancer is deleted after — not before — the underlying VPC/subnets.
 - Pipeline step ordering matters: a step that deploys an app must come *after* any step that creates resources the app depends on (e.g., a Kubernetes Secret) — an early version of this pipeline deployed before creating the Secret, reproducing the same `CreateContainerConfigError` seen earlier in manual testing.
 - AWS credentials for GitHub Actions are stored as GitHub Secrets, mirroring the same "keep sensitive values out of committed files" principle as Kubernetes Secrets.
+- CI/CD and GitOps are a deliberate division of labor: CI (GitHub Actions) builds and pushes images and commits the new image tag to Git; ArgoCD (inside the cluster) is the only thing that ever applies changes to the cluster. No external system holds credentials capable of modifying the cluster directly.
+- A least-privilege IAM policy must include permission to manage its own attachments — removing broad access before accounting for this caused a real lockout, recoverable only via the AWS root user.
+- NetworkPolicies and Security Groups operate at different, non-overlapping boundaries: Security Groups control what reaches a node from outside; NetworkPolicies control pod-to-pod traffic once already inside the cluster — neither can enforce the other's layer.
+- Prometheus's auto-discovery (via this Helm chart) watches Pod annotations specifically, not Service annotations — an early attempt to annotate the Service instead of the Deployment's pod template silently found nothing.
 
 ## Roadmap
 
@@ -190,4 +235,6 @@ terraform destroy
 - [x] Terraform (IaC) to provision real cloud infrastructure on AWS
 - [x] Deploy this stack to a real AWS Kubernetes cluster (EKS)
 - [x] Extend CI into full CD — automatic build, push to ECR, and deploy to EKS on push
-- [ ] Monitoring with Prometheus + Grafana
+- [x] Monitoring with Prometheus + Grafana
+- [x] GitOps with ArgoCD — pull-based deployment, verified self-healing against manual drift
+- [x] Security hardening — least-privilege IAM, image scanning, NetworkPolicy
