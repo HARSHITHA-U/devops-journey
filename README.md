@@ -21,9 +21,10 @@ Local Node.js app (myapp/app.js)
  │  1. Checkout code                             │
  │  2. Configure AWS credentials (GitHub Secrets)│
  │  3. Build image, push to ECR                  │
- │  4. Update kubeconfig for EKS                 │
- │  5. Ensure Kubernetes Secret exists           │
- │  6. helm upgrade --install → deploy to EKS    │
+ │  4. Trivy scan (fails on HIGH/CRITICAL)       │
+ │  5. Update kubeconfig for EKS                 │
+ │  6. Ensure Kubernetes Secret exists           │
+ │  7. helm upgrade --install → deploy to EKS    │
  └───────────────────────────────────────────────┘
           │
           ▼
@@ -43,11 +44,13 @@ Local Node.js app (myapp/app.js)
           │
           ▼
  ┌──────────────────────────────────────────────┐
- │              ArgoCD (GitOps)                 │
- │  Watches helm/myapp in Git, continuously     │
- │  syncs cluster state to match it (pull-based,│
- │  not pushed by CI). selfHeal reverts any     │
- │  manual/out-of-band cluster changes.         │
+ │         Two deployment paths                 │
+ |  (built separately, not combined):           │
+ │         1. AWS path (push-based):            │
+ │  GitHub Actions → helm upgrade → EKS         │
+ │  2. Local path (pull-based, GitOps):         │
+ │   Git (helm/myapp) → ArgoCD → Docker         │
+ │               Desktop K8's                   │
  └──────────────────────────────────────────────┘
           │
           ▼
@@ -79,13 +82,14 @@ Local Node.js app (myapp/app.js)
 - `Secret` for sensitive configuration (`API_KEY`), created directly via `kubectl` and never committed in plaintext
 
 **CI (GitHub Actions)**
-- Every push to `main` automatically checks out the repo and builds the Docker image, catching build-breaking errors before they'd reach a real deployment
+- Every push to `main` automatically checks out the repo and builds the Docker image, catching build-breaking errors before they'd reach a real deployment.
+- (Early stage. The workflow was later extended into full CD, see below.)
 
 **Infrastructure as Code (Terraform)**
 - Reuses an existing VPC/subnet from a separate AWS repo via `data` sources, demonstrating cross-project infrastructure references
 - Provisions a Security Group, SSH key pair, and EC2 instance (early exercise — since torn down)
 - Provisions an ECR repository to store the Docker image for cloud use
-- Provisions a full EKS cluster: control plane, a Node Group (2 worker EC2 instances across 2 Availability Zones), and the IAM roles/policies both require
+- Provisions a full EKS cluster: control plane, a Node Group (2 worker EC2 instances across 2 Availability Zones), and the IAM roles/policies both require.
 
 **Cloud deployment (AWS EKS)**
 - Same Kubernetes manifests as the local setup, pointed at the ECR-hosted image, deployed to a real AWS-managed Kubernetes cluster
@@ -107,9 +111,10 @@ Local Node.js app (myapp/app.js)
 - Grafana connects to Prometheus as a data source and renders live dashboards, verified against real generated traffic
 
 **GitOps (ArgoCD)**
-- ArgoCD installed in-cluster, configured via an `Application` manifest pointing at `helm/myapp` in this repo
-- Deployment is pull-based: ArgoCD polls Git and applies changes itself — no external system holds credentials capable of modifying the cluster
-- `selfHeal` enabled and verified: a manual, out-of-band `kubectl scale` change was automatically detected and reverted back to match Git within one sync cycle
+- ArgoCD installed on the local Docker Desktop Kubernetes cluster, configured via an `Application` manifest (`argocd/application.yaml`) pointing at `helm/myapp` in this repo, using the local defaults in `values.yaml`
+- Pull-based: ArgoCD polls Git and applies changes itself
+- `selfHeal` enabled and verified: a manual, out-of-band `kubectl scale` change was detected (app showed OutOfSync) and reverted to match Git
+- Not combined with the AWS pipeline: on EKS, deployment is still done by GitHub Actions (see below)
 
 **Security hardening**
 - Replaced broad `AdministratorAccess` with a custom least-privilege IAM policy, scoped to only the actions this project's Terraform actually performs (EC2, EKS, ECR, and specific IAM role-management actions)
@@ -148,6 +153,8 @@ Local Node.js app (myapp/app.js)
 │   ├── ecr.tf                  # ECR repository
 │   ├── eks.tf                  # EKS cluster, node group, IAM roles
 │   └── .gitignore               # excludes state files, local plugin cache
+├── argocd/
+│   └── application.yaml        # ArgoCD Application (local cluster)
 └── README.md                    # you are here
 ```
 
@@ -236,5 +243,5 @@ terraform destroy
 - [x] Deploy this stack to a real AWS Kubernetes cluster (EKS)
 - [x] Extend CI into full CD — automatic build, push to ECR, and deploy to EKS on push
 - [x] Monitoring with Prometheus + Grafana
-- [x] GitOps with ArgoCD — pull-based deployment, verified self-healing against manual drift
+- [x] GitOps with ArgoCD (local cluster) — pull-based deployment, verified self-healing against manual drift
 - [x] Security hardening — least-privilege IAM, image scanning, NetworkPolicy
