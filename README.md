@@ -130,7 +130,7 @@ Local Node.js app (myapp/app.js)
 ```
 .
 ├── .github/workflows/
-│   └── docker-build.yml       # CI: builds the Docker image on every push
+│   └── docker-build.yml        # CI/CD: build, push to ECR, Trivy scan, deploy to EKS via Helm
 ├── myapp/
 │   ├── app.js                  # Node.js HTTP server
 │   ├── Dockerfile
@@ -147,6 +147,7 @@ Local Node.js app (myapp/app.js)
 │       ├── values-aws.yaml     # AWS-specific overrides
 │       └── templates/
 │           ├── deployment.yaml
+│           ├── networkpolicy.yaml
 │           └── service.yaml
 ├── terraform/
 │   ├── main.tf                 # VPC/subnet reuse (data sources), routing
@@ -230,7 +231,7 @@ terraform destroy
 - `terraform destroy` can fail if an ECR repository still holds an image (`force_delete = true` resolves this) or if a Kubernetes-created Load Balancer is deleted after — not before — the underlying VPC/subnets.
 - Pipeline step ordering matters: a step that deploys an app must come *after* any step that creates resources the app depends on (e.g., a Kubernetes Secret) — an early version of this pipeline deployed before creating the Secret, reproducing the same `CreateContainerConfigError` seen earlier in manual testing.
 - AWS credentials for GitHub Actions are stored as GitHub Secrets, mirroring the same "keep sensitive values out of committed files" principle as Kubernetes Secrets.
-- CI/CD and GitOps are a deliberate division of labor: CI (GitHub Actions) builds and pushes images and commits the new image tag to Git; ArgoCD (inside the cluster) is the only thing that ever applies changes to the cluster. No external system holds credentials capable of modifying the cluster directly.
+- CI/CD and GitOps were built as two separate stages and not merged. On AWS, GitHub Actions deploys directly with `helm upgrade`, using stored credentials (push-based). ArgoCD was run against the local cluster to demonstrate pull-based deployment and self-healing. In production I would use one deployer per cluster: CI builds, scans, and commits the image tag to Git, and ArgoCD applies it, so CI would not need cluster credentials.
 - A least-privilege IAM policy must include permission to manage its own attachments — removing broad access before accounting for this caused a real lockout, recoverable only via the AWS root user.
 - NetworkPolicies and Security Groups operate at different, non-overlapping boundaries: Security Groups control what reaches a node from outside; NetworkPolicies control pod-to-pod traffic once already inside the cluster — neither can enforce the other's layer.
 - Prometheus's auto-discovery (via this Helm chart) watches Pod annotations specifically, not Service annotations — an early attempt to annotate the Service instead of the Deployment's pod template silently found nothing.
